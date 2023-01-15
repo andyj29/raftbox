@@ -11,6 +11,8 @@ func (p *Persister) SaveState(data []byte) {
 
 }
 
+func (p *Persister) SaveSnapshot(data)
+
 func (p *Persister) ReadSnapshot() []byte {
 	return nil
 }

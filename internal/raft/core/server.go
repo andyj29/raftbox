@@ -40,6 +40,9 @@ type Server struct {
 	matchIndex []int
 }
 
+// NewRaftServer creates and initializes a new instance of a Raft server,
+// applies non-volatile state and snapshot from persistence
+
 func NewRaftServer(
 	peers []*rpc.Client,
 	selfIndex int,
@@ -125,6 +128,8 @@ func (rs *Server) applySnapshot(snapshot []byte) {
 	rs.trimLog(lastIncludedIndex, lastIncludedTerm)
 }
 
+// trimLog discards the left-fold entries up to the entry with lastIncludedIndex and keeps
+// only its index and term to be referenced by AppendEntryRequest
 func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 	newLog := make([]LogEntry, 0)
 	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
@@ -138,6 +143,27 @@ func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 	}
 	rs.log = newLog
 }
+
 func (rs *Server) saveState() {
 	rs.storage.SaveState(rs.getNonVolatileState())
+}
+
+// TakeSnapshot takes and appends Raft non-volatile state snapshot to key-value snapshot,
+// trims the log to the last included index and save both updated Raft state
+// and the snapshot as a single atomic action
+func (rs *Server) TakeSnapshot(kvSnapshot []byte, index int) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	baseIndex, lastIndex := rs.log[0].Index, rs.getLastLogIndex()
+	if index <= baseIndex || index > lastIndex {
+		return
+	}
+	rs.trimLog(index, rs.log[index-baseIndex].Term)
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	encoder.Encode(rs.log[0].Index)
+	encoder.Encode(rs.log[0].Term)
+	raftSnapshot := append(w.Bytes(), kvSnapshot...)
+	rs.storage.SaveSnapshot(raftSnapshot)
 }
