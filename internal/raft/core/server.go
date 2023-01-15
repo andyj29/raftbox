@@ -41,8 +41,7 @@ type Server struct {
 }
 
 // NewRaftServer creates and initializes a new instance of a Raft server,
-// applies non-volatile state and snapshot from persistence
-
+// applies Raft persistent state and snapshot from persistence
 func NewRaftServer(
 	peers []*rpc.Client,
 	selfIndex int,
@@ -64,13 +63,13 @@ func NewRaftServer(
 		applyChan:   applyChan,
 	}
 
-	// re-initialize non-volatile state from pre-crash
-	rs.initNonVolatileState(persister.ReadState())
+	// initialize Raft persistent state from pre-crash
+	rs.initPersistentState(persister.ReadState())
 	rs.applySnapshot(persister.ReadSnapshot())
 	return rs
 }
 
-func (rs *Server) initNonVolatileState(data []byte) {
+func (rs *Server) initPersistentState(data []byte) {
 	if len(data) == 0 {
 		return
 	}
@@ -91,15 +90,7 @@ func (rs *Server) initNonVolatileState(data []byte) {
 	rs.log = log
 }
 
-func (rs *Server) getLastLogIndex() int {
-	return rs.log[len(rs.log)-1].Index
-}
-
-func (rs *Server) getLastLogTerm() int {
-	return rs.log[len(rs.log)-1].Term
-}
-
-func (rs *Server) getNonVolatileState() []byte {
+func (rs *Server) getPersistentState() []byte {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
 
@@ -109,23 +100,6 @@ func (rs *Server) getNonVolatileState() []byte {
 		return nil
 	}
 	return w.Bytes()
-}
-
-func (rs *Server) applySnapshot(snapshot []byte) {
-	if snapshot == nil || len(snapshot) == 0 {
-		return
-	}
-
-	var lastIncludedIndex, lastIncludedTerm int
-	r := bytes.NewBuffer(snapshot)
-	decoder := gob.NewDecoder(r)
-	decoder.Decode(&lastIncludedIndex)
-	decoder.Decode(&lastIncludedTerm)
-
-	rs.lastApplied = lastIncludedIndex
-	rs.commitIndex = lastIncludedIndex
-
-	rs.trimLog(lastIncludedIndex, lastIncludedTerm)
 }
 
 // trimLog discards the left-fold entries up to the entry with lastIncludedIndex and keeps
@@ -145,25 +119,38 @@ func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 }
 
 func (rs *Server) saveState() {
-	rs.storage.SaveState(rs.getNonVolatileState())
+	rs.storage.SaveState(rs.getPersistentState())
 }
 
-// TakeSnapshot takes and appends Raft non-volatile state snapshot to key-value snapshot,
-// trims the log to the last included index and save both updated Raft state
-// and the snapshot as a single atomic action
-func (rs *Server) TakeSnapshot(kvSnapshot []byte, index int) {
+func (rs *Server) getLastLogIndex() int {
+	return rs.log[len(rs.log)-1].Index
+}
+
+func (rs *Server) getLastLogTerm() int {
+	return rs.log[len(rs.log)-1].Term
+}
+
+// Start is called by the key-value service to start agreement on the next command to be appended
+// to Raft log. It returns immediately if the server isn't the leader. Otherwise, it appends the new
+// LogEntry to the log and persist the state. Return the index of the command in the log if it's ever committed,
+// the current term and whether the server believes it's a leader
+func (rs *Server) Start(command interface{}) (index int, term int, isLeader bool) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
-	baseIndex, lastIndex := rs.log[0].Index, rs.getLastLogIndex()
-	if index <= baseIndex || index > lastIndex {
+	isLeader = rs.state == LEADER
+	if !isLeader {
 		return
 	}
-	rs.trimLog(index, rs.log[index-baseIndex].Term)
-	w := new(bytes.Buffer)
-	encoder := gob.NewEncoder(w)
-	encoder.Encode(rs.log[0].Index)
-	encoder.Encode(rs.log[0].Term)
-	raftSnapshot := append(w.Bytes(), kvSnapshot...)
-	rs.storage.SaveSnapshot(raftSnapshot)
+
+	index = rs.getLastLogIndex() + 1
+	term = rs.currentTerm
+	rs.log = append(rs.log, LogEntry{Index: index, Term: term, Command: command})
+	rs.saveState()
+
+	return index, term, isLeader
+}
+
+func (rs *Server) abdicateLeadership(newTerm int) {
+
 }
