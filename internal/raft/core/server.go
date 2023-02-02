@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"sync"
+	"sync/atomic"
 
 	"github.com/andyj29/raftbox/internal/raft/rpc"
 	"github.com/andyj29/raftbox/internal/raft/storage"
@@ -26,6 +27,7 @@ type Server struct {
 	storage   *storage.Persister
 	state     STATE
 	selfIndex int
+	dead      int32
 
 	currentTerm int
 	votedFor    int
@@ -38,6 +40,8 @@ type Server struct {
 
 	nextIndex  []int
 	matchIndex []int
+
+	heartbeat chan bool
 }
 
 // NewRaftServer creates and initializes a new instance of a Raft server,
@@ -154,6 +158,17 @@ func (rs *Server) Start(command interface{}) (index int, term int, isLeader bool
 	rs.saveState()
 
 	return index, term, isLeader
+}
+
+func (rs *Server) Kill() {
+	atomic.StoreInt32(&rs.dead, 1)
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+}
+
+func (rs *Server) killed() bool {
+	z := atomic.LoadInt32(&rs.dead)
+	return z == 1
 }
 
 func (rs *Server) abdicateLeadership(newTerm int) {
