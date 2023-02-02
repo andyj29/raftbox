@@ -130,6 +130,11 @@ func (rs *Server) getLastLogTerm() int {
 	return rs.log[len(rs.log)-1].Term
 }
 
+func (rs *Server) isCandidateLogUpToDate(lastLogIndex, lastLogTerm int) bool {
+	index, term := rs.getLastLogIndex(), rs.getLastLogTerm()
+	return lastLogTerm > term || (lastLogTerm == term && lastLogIndex >= index)
+}
+
 // Start is called by the key-value service to start agreement on the next command to be appended
 // to Raft log. It returns immediately if the server isn't the leader. Otherwise, it appends the new
 // LogEntry to the log and persist the state. Return the index of the command in the log if it's ever committed,
@@ -152,5 +157,45 @@ func (rs *Server) Start(command interface{}) (index int, term int, isLeader bool
 }
 
 func (rs *Server) abdicateLeadership(newTerm int) {
+	defer rs.saveState()
 
+	rs.state = FOLLOWER
+	rs.currentTerm = newTerm
+	rs.votedFor = -1
+	rs.nextIndex = nil
+	rs.matchIndex = nil
+}
+
+type RequestVoteRequest struct {
+	Term         int
+	CandidateID  int
+	LastLogIndex int
+	LastLogTerm  int
+}
+
+type RequestVoteReply struct {
+	Term        int
+	VoteGranted bool
+}
+
+func (rs *Server) RequestVote(request *RequestVoteRequest, reply *RequestVoteReply) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	defer rs.saveState()
+
+	reply.Term = rs.currentTerm
+	reply.VoteGranted = false
+
+	if request.Term < rs.currentTerm {
+		return
+	}
+
+	if request.Term > rs.currentTerm {
+		rs.abdicateLeadership(request.Term)
+	}
+
+	if (rs.votedFor == -1 || rs.votedFor == request.CandidateID) && rs.isCandidateLogUpToDate(request.LastLogIndex, request.LastLogTerm) {
+		reply.VoteGranted = true
+		rs.votedFor = request.CandidateID
+	}
 }
