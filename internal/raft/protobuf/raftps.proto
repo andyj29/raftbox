@@ -1,0 +1,25 @@
+syntax = "proto3";
+package protobuf;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/andyj29/raftbox/internal/raft/protobuf";
+
+message PersistentState {
+  int64 currentTerm = 1;
+  int32 votedFor = 2;
+
+  message LogEntry {
+    int64 index = 1;
+    int64 term = 2;
+    google.protobuf.Struct Command = 3;
+  }
+
+  repeated LogEntry log = 3;
+}
+
+message Snapshot {
+  int64 lastIncludedIndex = 1;
+  int64 lastIncludedTerm = 2;
+  map<string, google.protobuf.Value> stateMachineState = 3;
+}

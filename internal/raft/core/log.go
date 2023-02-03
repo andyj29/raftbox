@@ -37,7 +37,7 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 	}
 
 	if request.Term > rs.currentTerm {
-		rs.abdicateLeadership(request.Term)
+		rs.stepDown(request.Term)
 		reply.Term = rs.currentTerm
 	}
 

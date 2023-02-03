@@ -27,14 +27,11 @@ func (rs *Server) InstallSnapshot(request *InstallSnapshotRequest, reply *Instal
 	}
 
 	if request.Term > rs.currentTerm {
-		rs.abdicateLeadership(request.Term)
+		rs.stepDown(request.Term)
 	}
 }
 
-// TakeSnapshot takes and appends Raft persistent state excluding the log to snapshot,
-// from the key-value service and trims the log to the last included index and save
-// both updated Raft state and the snapshot as a single atomic action
-func (rs *Server) TakeSnapshot(kvSnapshot []byte, index int) {
+func (rs *Server) TakeSnapshot(stateMachineState map[string]interface{}, index int) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
@@ -43,12 +40,9 @@ func (rs *Server) TakeSnapshot(kvSnapshot []byte, index int) {
 		return
 	}
 	rs.trimLog(index, rs.log[index-baseIndex].Term)
-	w := new(bytes.Buffer)
-	encoder := gob.NewEncoder(w)
-	encoder.Encode(rs.log[0].Index)
-	encoder.Encode(rs.log[0].Term)
-	raftSnapshot := append(w.Bytes(), kvSnapshot...)
-	rs.storage.SaveStateAndSnapshot(rs.getPersistentState(), raftSnapshot)
+
+	rs.saveState()
+	rs.saveSnapshot(stateMachineState)
 }
 
 // applySnapshot applies the Raft snapshot and trims the log accordingly

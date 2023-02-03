@@ -1,8 +1,6 @@
 package core
 
 import (
-	"bytes"
-	"encoding/gob"
 	"sync"
 	"sync/atomic"
 
@@ -24,7 +22,7 @@ const (
 type Server struct {
 	mu        sync.Mutex
 	peers     []*rpc.Client
-	storage   *storage.Persister
+	storage   *storage.FileStorage
 	state     STATE
 	selfIndex int
 	dead      int32
@@ -49,14 +47,14 @@ type Server struct {
 func NewRaftServer(
 	peers []*rpc.Client,
 	selfIndex int,
-	persister *storage.Persister,
+	storage *storage.FileStorage,
 	applyChan chan<- ApplyMsg,
 ) *Server {
 	mu := sync.Mutex{}
 	rs := &Server{
 		mu:          mu,
 		peers:       peers,
-		storage:     persister,
+		storage:     storage,
 		state:       FOLLOWER,
 		selfIndex:   selfIndex,
 		currentTerm: 0,
@@ -68,42 +66,19 @@ func NewRaftServer(
 	}
 
 	// initialize Raft persistent state from pre-crash
-	rs.initPersistentState(persister.ReadState())
-	rs.applySnapshot(persister.ReadSnapshot())
+	rs.initPersistentState(storage.ReadState())
+	rs.applySnapshot(storage.ReadSnapshot())
 	return rs
 }
 
-func (rs *Server) initPersistentState(data []byte) {
-	if len(data) == 0 {
-		return
-	}
-
-	r := bytes.NewBuffer(data)
-	decoder := gob.NewDecoder(r)
-	var (
-		currentTerm, votedFor int
-		log                   []LogEntry
-	)
-	if decoder.Decode(&currentTerm) != nil ||
-		decoder.Decode(&votedFor) != nil ||
-		decoder.Decode(&log) != nil {
-		return
-	}
+func (rs *Server) initPersistentState(currentTerm, votedFor int, log []LogEntry) {
 	rs.currentTerm = currentTerm
 	rs.votedFor = votedFor
 	rs.log = log
 }
 
-func (rs *Server) getPersistentState() []byte {
-	w := new(bytes.Buffer)
-	encoder := gob.NewEncoder(w)
-
-	if encoder.Encode(rs.currentTerm) != nil ||
-		encoder.Encode(rs.votedFor) != nil ||
-		encoder.Encode(rs.log) != nil {
-		return nil
-	}
-	return w.Bytes()
+func (rs *Server) getPersistentState() (int, int, []LogEntry) {
+	return rs.currentTerm, rs.votedFor, rs.log
 }
 
 // trimLog discards the left-fold entries up to the entry with lastIncludedIndex and keeps
@@ -124,6 +99,10 @@ func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 
 func (rs *Server) saveState() {
 	rs.storage.SaveState(rs.getPersistentState())
+}
+
+func (rs *Server) saveSnapshot(stateMachineState map[string]interface{}) {
+	rs.storage.SaveSnapshot(rs.log[0].Index, rs.log[0].Term, stateMachineState)
 }
 
 func (rs *Server) getLastLogIndex() int {
@@ -171,7 +150,7 @@ func (rs *Server) killed() bool {
 	return z == 1
 }
 
-func (rs *Server) abdicateLeadership(newTerm int) {
+func (rs *Server) stepDown(newTerm int) {
 	defer rs.saveState()
 
 	rs.state = FOLLOWER
@@ -206,7 +185,7 @@ func (rs *Server) RequestVote(request *RequestVoteRequest, reply *RequestVoteRep
 	}
 
 	if request.Term > rs.currentTerm {
-		rs.abdicateLeadership(request.Term)
+		rs.stepDown(request.Term)
 	}
 
 	if (rs.votedFor == -1 || rs.votedFor == request.CandidateID) && rs.isCandidateLogUpToDate(request.LastLogIndex, request.LastLogTerm) {
