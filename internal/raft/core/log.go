@@ -67,15 +67,15 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 	}
 }
 
-func (rs *Server) sendAppendEntriesRPC(server int, request *AppendEntryRequest, reply *AppendEntryReply) bool {
+func (rs *Server) sendAppendEntriesRPC(server int, request *AppendEntryRequest, reply *AppendEntryReply) (ok bool) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
 	if rs.state != LEADER || request.Term != rs.currentTerm {
-		return false
+		return ok
 	}
 
-	ok := rs.peers[server].AppendEntries(request, reply)
+	ok = rs.peers[server].AppendEntries(request, reply)
 	if reply.Term > rs.currentTerm {
 		rs.stepDown(reply.Term)
 		return ok

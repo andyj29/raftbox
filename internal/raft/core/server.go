@@ -28,6 +28,7 @@ type Server struct {
 	dead      int32
 
 	PersistentState
+	voteCount int
 
 	newCond     *sync.Cond
 	commitIndex int
@@ -38,6 +39,7 @@ type Server struct {
 	matchIndex []int
 
 	heartbeat chan bool
+	elected   chan bool
 }
 
 type PersistentState struct {
@@ -86,7 +88,7 @@ func (rs *Server) getPersistentState() PersistentState {
 }
 
 // trimLog discards the left-fold entries up to the entry with lastIncludedIndex and keeps
-// only its index and term to be referenced by AppendEntryRequest
+// only its index and term for consistency check
 func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 	newLog := make([]LogEntry, 0)
 	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
@@ -126,8 +128,7 @@ func (rs *Server) Start(command interface{}) (index int, term int, isLeader bool
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
-	isLeader = rs.state == LEADER
-	if !isLeader {
+	if rs.state != LEADER {
 		return
 	}
 
@@ -158,6 +159,17 @@ func (rs *Server) stepDown(newTerm int) {
 	rs.votedFor = -1
 	rs.nextIndex = nil
 	rs.matchIndex = nil
+}
+
+func (rs *Server) takeLeadership() {
+	rs.state = LEADER
+	rs.nextIndex = make([]int, len(rs.peers))
+	rs.matchIndex = make([]int, len(rs.peers))
+	nextIndex := rs.getLastLogIndex() + 1
+	for i := range rs.nextIndex {
+		rs.nextIndex[i] = nextIndex
+	}
+	rs.elected <- true
 }
 
 type RequestVoteRequest struct {
@@ -191,5 +203,49 @@ func (rs *Server) RequestVote(request *RequestVoteRequest, reply *RequestVoteRep
 	if (rs.votedFor == -1 || rs.votedFor == request.CandidateID) && rs.isCandidateLogUpToDate(request.LastLogIndex, request.LastLogTerm) {
 		reply.VoteGranted = true
 		rs.votedFor = request.CandidateID
+	}
+}
+
+func (rs *Server) sendRequestVote(server int, request *RequestVoteRequest, reply *RequestVoteReply) (ok bool) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	defer rs.saveState()
+
+	if rs.state != CANDIDATE || request.Term != rs.currentTerm {
+		return ok
+	}
+
+	ok = rs.peers[server].RequestVote(request, reply)
+	if rs.currentTerm < reply.Term {
+		rs.stepDown(reply.Term)
+		return ok
+	}
+
+	if reply.VoteGranted {
+		rs.voteCount++
+		if rs.voteCount > len(rs.peers)/2 {
+			rs.takeLeadership()
+		}
+	}
+
+	return ok
+}
+
+func (rs *Server) broadcastRequestVote() {
+	rs.mu.Lock()
+
+	request := &RequestVoteRequest{
+		Term:         rs.currentTerm,
+		CandidateID:  rs.selfIndex,
+		LastLogIndex: rs.getLastLogIndex(),
+		LastLogTerm:  rs.getLastLogTerm(),
+	}
+	reply := &RequestVoteReply{}
+	rs.mu.Unlock()
+
+	for server := range rs.peers {
+		if server != rs.selfIndex {
+			go rs.sendRequestVote(server, request, reply)
+		}
 	}
 }

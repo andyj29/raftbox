@@ -1,15 +1,10 @@
 package storage
 
 import (
-	"sync"
-
 	"github.com/andyj29/raftbox/internal/raft/core"
 )
 
 type FileStorage struct {
-	mu        sync.Mutex
-	raftState []byte
-	snapshot  []byte
 }
 
 func (p *FileStorage) ReadState() core.PersistentState {
