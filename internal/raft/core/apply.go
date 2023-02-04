@@ -6,7 +6,7 @@ type ApplyMsg struct {
 	Command      interface{}
 
 	SnapshotValid bool
-	Snapshot      []byte
+	Snapshot      Snapshot
 }
 
 func (rs *Server) watch() {

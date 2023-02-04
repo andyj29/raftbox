@@ -27,9 +27,7 @@ type Server struct {
 	selfIndex int
 	dead      int32
 
-	currentTerm int
-	votedFor    int
-	log         []LogEntry
+	PersistentState
 
 	newCond     *sync.Cond
 	commitIndex int
@@ -42,6 +40,11 @@ type Server struct {
 	heartbeat chan bool
 }
 
+type PersistentState struct {
+	currentTerm, votedFor int
+	log                   []LogEntry
+}
+
 // NewRaftServer creates and initializes a new instance of a Raft server,
 // applies Raft persistent state and snapshot from persistence
 func NewRaftServer(
@@ -51,19 +54,15 @@ func NewRaftServer(
 	applyChan chan<- ApplyMsg,
 ) *Server {
 	mu := sync.Mutex{}
-	rs := &Server{
-		mu:          mu,
-		peers:       peers,
-		storage:     storage,
-		state:       FOLLOWER,
-		selfIndex:   selfIndex,
-		currentTerm: 0,
-		votedFor:    -1,
-		newCond:     sync.NewCond(&mu),
-		commitIndex: 0,
-		lastApplied: 0,
-		applyChan:   applyChan,
-	}
+	rs := &Server{}
+	rs.mu = mu
+	rs.peers = peers
+	rs.storage = storage
+	rs.state = FOLLOWER
+	rs.selfIndex = selfIndex
+	rs.votedFor = -1
+	rs.newCond = sync.NewCond(&mu)
+	rs.applyChan = applyChan
 
 	// initialize Raft persistent state from pre-crash
 	rs.initPersistentState(storage.ReadState())
@@ -71,14 +70,19 @@ func NewRaftServer(
 	return rs
 }
 
-func (rs *Server) initPersistentState(currentTerm, votedFor int, log []LogEntry) {
-	rs.currentTerm = currentTerm
-	rs.votedFor = votedFor
-	rs.log = log
+func (rs *Server) initPersistentState(state PersistentState) {
+	rs.currentTerm = state.currentTerm
+	rs.votedFor = state.votedFor
+	rs.log = state.log
 }
 
-func (rs *Server) getPersistentState() (int, int, []LogEntry) {
-	return rs.currentTerm, rs.votedFor, rs.log
+func (rs *Server) getPersistentState() PersistentState {
+	state := PersistentState{
+		currentTerm: rs.currentTerm,
+		votedFor:    rs.votedFor,
+		log:         rs.log,
+	}
+	return state
 }
 
 // trimLog discards the left-fold entries up to the entry with lastIncludedIndex and keeps
@@ -99,10 +103,6 @@ func (rs *Server) trimLog(lastIncludedIndex, lastIncludedTerm int) {
 
 func (rs *Server) saveState() {
 	rs.storage.SaveState(rs.getPersistentState())
-}
-
-func (rs *Server) saveSnapshot(stateMachineState map[string]interface{}) {
-	rs.storage.SaveSnapshot(rs.log[0].Index, rs.log[0].Term, stateMachineState)
 }
 
 func (rs *Server) getLastLogIndex() int {

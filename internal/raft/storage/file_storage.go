@@ -12,18 +12,22 @@ type FileStorage struct {
 	snapshot  []byte
 }
 
-func (p *FileStorage) ReadState() (int, int, []core.LogEntry) {
-	return 0, 0, nil
+func (p *FileStorage) ReadState() core.PersistentState {
+	return core.PersistentState{}
 }
 
-func (p *FileStorage) SaveState(currentTerm, votedFor int, log []core.LogEntry) {
-	
-}
-
-func (p *FileStorage) SaveSnapshot(lastIncludedIndex, lastIncludedTerm int, stateMachineState map[string]interface{}) {
+func (p *FileStorage) SaveState(state core.PersistentState) {
 
 }
 
-func (p *FileStorage) ReadSnapshot() []byte {
-	return nil
+func (p *FileStorage) ReadSnapshot() core.Snapshot {
+	return core.Snapshot{}
+}
+
+func (p *FileStorage) SaveSnapshot(snapshot core.Snapshot) {
+
+}
+
+func (p *FileStorage) SaveStateAndSnapshot(state core.PersistentState, snapshot core.Snapshot) {
+
 }
