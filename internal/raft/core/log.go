@@ -65,5 +65,47 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 			rs.newCond.Broadcast()
 		}
 	}
+}
 
+func (rs *Server) sendAppendEntriesRPC(server int, request *AppendEntryRequest, reply *AppendEntryReply) bool {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	if rs.state != LEADER || request.Term != rs.currentTerm {
+		return false
+	}
+
+	ok := rs.peers[server].AppendEntries(request, reply)
+	if reply.Term > rs.currentTerm {
+		rs.stepDown(reply.Term)
+		return ok
+	}
+
+	if reply.Success {
+		if len(request.Entries) > 0 {
+			rs.nextIndex[server] = request.Entries[len(request.Entries)-1].Index + 1
+			rs.matchIndex[server] = rs.nextIndex[server] - 1
+		}
+	} else {
+		rs.nextIndex[server] = min(reply.NextTryIndex, rs.getLastLogIndex())
+	}
+
+	baseIndex := rs.log[0].Index
+
+	// check for the log entry with the highest index known to be committed
+	// and update leader's commitIndex
+	for i := rs.getLastLogIndex(); i > rs.commitIndex && rs.log[i-baseIndex].Term == rs.currentTerm; i-- {
+		count := 1
+		for s := range rs.peers {
+			if s != rs.selfIndex && rs.matchIndex[s] >= i {
+				count++
+			}
+		}
+		if count > len(rs.peers)/2 {
+			rs.commitIndex = i
+			rs.newCond.Broadcast()
+			break
+		}
+	}
+	return ok
 }
