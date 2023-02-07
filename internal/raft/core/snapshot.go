@@ -32,9 +32,7 @@ func (rs *Server) InstallSnapshot(request *InstallSnapshotRequest, reply *Instal
 
 	rs.heartbeat <- true
 	if request.LastIncludedIndex > rs.commitIndex {
-		rs.commitIndex = request.LastIncludedIndex
-		rs.lastApplied = request.LastIncludedIndex
-		rs.trimLog(request.LastIncludedIndex, request.LastIncludedTerm)
+		rs.applySnapshot(request.Snapshot)
 		rs.storage.SaveStateAndSnapshot(rs.getPersistentState(), request.Snapshot)
 	}
 }
@@ -65,4 +63,24 @@ func (rs *Server) applySnapshot(snapshot Snapshot) {
 	rs.trimLog(snapshot.LastIncludedIndex, snapshot.LastIncludedTerm)
 	msg := ApplyMsg{SnapshotValid: true, Snapshot: snapshot}
 	rs.applyChan <- msg
+}
+
+func (rs *Server) sendInstallSnapshotRPC(server int, request *InstallSnapshotRequest, reply *InstallSnapshotReply) (ok bool) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	defer rs.saveState()
+
+	if rs.state != LEADER || request.Term != rs.currentTerm {
+		return ok
+	}
+
+	ok = rs.peers[server].InstallSnapshot(request, reply)
+	if rs.currentTerm < reply.Term {
+		rs.stepDown(reply.Term)
+		return ok
+	}
+
+	rs.nextIndex[server] = request.LastIncludedIndex + 1
+	rs.matchIndex[server] = request.LastIncludedIndex
+	return ok
 }

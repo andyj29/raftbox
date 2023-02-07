@@ -12,3 +12,7 @@ func (c *Client) AppendEntries(request *core.AppendEntryRequest, reply *core.App
 func (c *Client) RequestVote(request *core.RequestVoteRequest, reply *core.RequestVoteReply) bool {
 	return true
 }
+
+func (c *Client) InstallSnapshot(request *core.InstallSnapshotRequest, replye *core.InstallSnapshotReply) bool {
+	return true
+}

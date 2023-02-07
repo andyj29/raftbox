@@ -206,7 +206,7 @@ func (rs *Server) RequestVote(request *RequestVoteRequest, reply *RequestVoteRep
 	}
 }
 
-func (rs *Server) sendRequestVote(server int, request *RequestVoteRequest, reply *RequestVoteReply) (ok bool) {
+func (rs *Server) sendRequestVoteRPC(server int, request *RequestVoteRequest, reply *RequestVoteReply) (ok bool) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	defer rs.saveState()
@@ -231,7 +231,7 @@ func (rs *Server) sendRequestVote(server int, request *RequestVoteRequest, reply
 	return ok
 }
 
-func (rs *Server) broadcastRequestVote() {
+func (rs *Server) broadcastRequestVoteRPC() {
 	rs.mu.Lock()
 
 	request := &RequestVoteRequest{
@@ -245,7 +245,7 @@ func (rs *Server) broadcastRequestVote() {
 
 	for server := range rs.peers {
 		if server != rs.selfIndex {
-			go rs.sendRequestVote(server, request, reply)
+			go rs.sendRequestVoteRPC(server, request, reply)
 		}
 	}
 }
