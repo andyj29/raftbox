@@ -26,8 +26,6 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 	defer rs.mu.Unlock()
 	defer rs.saveState()
 
-	rs.heartbeat <- true
-
 	reply.Success = false
 	reply.Term = rs.currentTerm
 
@@ -36,6 +34,7 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 		return
 	}
 
+	rs.heartbeat <- true
 	if request.Term > rs.currentTerm {
 		rs.stepDown(request.Term)
 		reply.Term = rs.currentTerm

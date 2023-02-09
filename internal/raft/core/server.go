@@ -34,6 +34,7 @@ type Server struct {
 	commitIndex int
 	lastApplied int
 	applyChan   chan<- ApplyMsg
+	snapChan    chan<- bool
 
 	nextIndex  []int
 	matchIndex []int
@@ -140,10 +141,8 @@ func (rs *Server) Start(command interface{}) (index int, term int, isLeader bool
 	return index, term, isLeader
 }
 
-func (rs *Server) Kill() {
+func (rs *Server) Terminate() {
 	atomic.StoreInt32(&rs.dead, 1)
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
 }
 
 func (rs *Server) killed() bool {

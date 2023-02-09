@@ -9,7 +9,7 @@ type ApplyMsg struct {
 	Snapshot      Snapshot
 }
 
-func (rs *Server) watch() {
+func (rs *Server) asyncApply() {
 	defer close(rs.applyChan)
 	defer rs.newCond.L.Unlock()
 
