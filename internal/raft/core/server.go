@@ -3,9 +3,6 @@ package core
 import (
 	"sync"
 	"sync/atomic"
-
-	"github.com/andyj29/raftbox/internal/raft/rpc"
-	"github.com/andyj29/raftbox/internal/raft/storage"
 )
 
 type STATE int
@@ -21,8 +18,8 @@ const (
 // other servers in the cluster.
 type Server struct {
 	mu        sync.Mutex
-	peers     []*rpc.Client
-	storage   *storage.FileStorage
+	peers     []Client
+	storage   Storage
 	state     STATE
 	selfIndex int
 	dead      int32
@@ -34,7 +31,6 @@ type Server struct {
 	commitIndex int
 	lastApplied int
 	applyChan   chan<- ApplyMsg
-	snapChan    chan<- bool
 
 	nextIndex  []int
 	matchIndex []int
@@ -51,20 +47,19 @@ type PersistentState struct {
 // NewRaftServer creates and initializes a new instance of a Raft server,
 // applies Raft persistent state and snapshot from persistence
 func NewRaftServer(
-	peers []*rpc.Client,
+	peers []Client,
 	selfIndex int,
-	storage *storage.FileStorage,
+	storage Storage,
 	applyChan chan<- ApplyMsg,
 ) *Server {
-	mu := sync.Mutex{}
 	rs := &Server{}
-	rs.mu = mu
+	rs.mu = sync.Mutex{}
 	rs.peers = peers
 	rs.storage = storage
 	rs.state = FOLLOWER
 	rs.selfIndex = selfIndex
 	rs.votedFor = -1
-	rs.newCond = sync.NewCond(&mu)
+	rs.newCond = sync.NewCond(&rs.mu)
 	rs.applyChan = applyChan
 
 	// initialize Raft persistent state from pre-crash
@@ -114,6 +109,10 @@ func (rs *Server) getLastLogIndex() int {
 
 func (rs *Server) getLastLogTerm() int {
 	return rs.log[len(rs.log)-1].Term
+}
+
+func (rs *Server) getPersistentStateSize() int {
+	return rs.storage.Size()
 }
 
 func (rs *Server) isCandidateLogUpToDate(lastLogIndex, lastLogTerm int) bool {

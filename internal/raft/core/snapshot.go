@@ -84,7 +84,3 @@ func (rs *Server) sendInstallSnapshotRPC(server int, request *InstallSnapshotReq
 	rs.matchIndex[server] = request.LastIncludedIndex
 	return ok
 }
-
-func (rs *Server) asyncSnapshot() {
-	// trigger kv service to take snapshot if log cap surpasses set limit
-}

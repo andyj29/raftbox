@@ -1,8 +1,6 @@
 package storage
 
-import (
-	"github.com/andyj29/raftbox/internal/raft/core"
-)
+import "github.com/andyj29/raftbox/internal/raft/core"
 
 type FileStorage struct {
 }
@@ -25,4 +23,8 @@ func (p *FileStorage) SaveSnapshot(snapshot core.Snapshot) {
 
 func (p *FileStorage) SaveStateAndSnapshot(state core.PersistentState, snapshot core.Snapshot) {
 
+}
+
+func (p *FileStorage) Size() int {
+	return 0
 }

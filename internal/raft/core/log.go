@@ -24,7 +24,6 @@ type AppendEntryReply struct {
 func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryReply) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	defer rs.saveState()
 
 	reply.Success = false
 	reply.Term = rs.currentTerm
@@ -61,6 +60,7 @@ func (rs *Server) AppendEntries(request *AppendEntryRequest, reply *AppendEntryR
 		reply.NextTryIndex = request.PrevLogIndex + len(request.Entries)
 		if rs.commitIndex < request.LeaderCommit {
 			rs.commitIndex = min(request.LeaderCommit, rs.getLastLogIndex())
+			rs.saveState()
 			rs.newCond.Broadcast()
 		}
 	}
