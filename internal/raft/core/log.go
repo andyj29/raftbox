@@ -7,12 +7,12 @@ type LogEntry struct {
 }
 
 type AppendEntryRequest struct {
-	Term         int
-	LeaderID     int
-	PrevLogIndex int
-	PrevLogTerm  int
+	Term         uint64
+	LeaderID     uint32
+	PrevLogIndex uint64
+	PrevLogTerm  uint64
 	Entries      []LogEntry
-	LeaderCommit int
+	LeaderCommit uint64
 }
 
 type AppendEntryReply struct {

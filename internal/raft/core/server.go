@@ -21,27 +21,28 @@ type Server struct {
 	peers     []Client
 	storage   Storage
 	state     STATE
-	selfIndex int
+	selfIndex uint32
 	dead      int32
 
 	PersistentState
-	voteCount int
+	voteCount int32
 
 	newCond     *sync.Cond
-	commitIndex int
-	lastApplied int
+	commitIndex uint64
+	lastApplied uint64
 	applyChan   chan<- ApplyMsg
 
-	nextIndex  []int
-	matchIndex []int
+	nextIndex  []uint64
+	matchIndex []uint64
 
 	heartbeat chan bool
 	elected   chan bool
 }
 
 type PersistentState struct {
-	currentTerm, votedFor int
-	log                   []LogEntry
+	currentTerm uint32
+	votedFor    int
+	log         []LogEntry
 }
 
 // NewRaftServer creates and initializes a new instance of a Raft server,
